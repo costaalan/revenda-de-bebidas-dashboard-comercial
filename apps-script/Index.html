@@ -1,0 +1,621 @@
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1f232c; --border: #2a2f3a;
+    --text: #e8eaf0; --muted: #9aa3b2; --accent: #e0a11c; --accent2: #c97b1f;
+    --green: #2fbf71; --red: #e5484d; --font: 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--font); }
+  header { display:flex; align-items:center; gap:24px; padding:14px 24px; background:var(--panel); border-bottom:1px solid var(--border); }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  nav { display:flex; gap:8px; margin-left:auto; }
+  nav button { background:transparent; border:1px solid var(--border); color:var(--muted); padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px; }
+  nav button.active { background:var(--accent); color:#1a1305; border-color:var(--accent); font-weight:600; }
+
+  .filtros { display:flex; flex-wrap:wrap; gap:10px; padding:14px 24px; background:var(--panel2); border-bottom:1px solid var(--border); align-items:end; }
+  .filtros .campo { display:flex; flex-direction:column; gap:4px; }
+  .filtros label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .filtros select, .filtros input { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:7px 8px; font-size:13px; min-width:120px; }
+  .filtros button.aplicar { background:var(--accent); color:#1a1305; border:none; border-radius:6px; padding:8px 18px; font-weight:600; cursor:pointer; font-size:13px; }
+
+  main { padding:22px 24px; max-width:1400px; margin:0 auto; }
+  .page { display:none; }
+  .page.active { display:block; }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:22px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; position:relative; overflow:hidden; }
+  .card .titulo { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+  .card .valor { font-size:26px; font-weight:700; }
+  .card .linha { display:flex; align-items:center; gap:6px; font-size:12.5px; margin-top:6px; color:var(--muted); }
+  .seta-up { color:var(--green); } .seta-down { color:var(--red); }
+  .card.bottle-card { display:flex; gap:14px; align-items:center; }
+  .card.bottle-card .infos { flex:1; }
+
+  .charts-row { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:22px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .panel h3 { margin:0 0 10px 0; font-size:14px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+
+  table.dados { width:100%; border-collapse:collapse; font-size:13px; }
+  table.dados th, table.dados td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
+  table.dados th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; }
+
+  .loading { color:var(--muted); font-size:13px; padding:20px; text-align:center; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:var(--panel2); border:1px solid var(--border); }
+</style>
+
+<header>
+  <h1>🍺 Dashboard Comercial</h1>
+  <nav>
+    <button id="nav-overview" class="active" onclick="mostrarPagina('overview')">Overview</button>
+    <button id="nav-analise" onclick="mostrarPagina('analise')">Análise</button>
+  </nav>
+</header>
+
+<div class="filtros">
+  <div class="campo">
+    <label>Granularidade</label>
+    <select id="f-granularidade" onchange="atualizarCamposPeriodo()">
+      <option value="dia">Dia</option>
+      <option value="semana">Semana</option>
+      <option value="mes" selected>Mês</option>
+      <option value="trimestre">Trimestre</option>
+    </select>
+  </div>
+  <div class="campo"><label>Ano</label><select id="f-ano"></select></div>
+  <div class="campo" id="campo-dia"><label>Dia</label><input type="date" id="f-dia" value="2020-12-15"></div>
+  <div class="campo" id="campo-semana"><label>Semana (nº ISO)</label><input type="number" id="f-semana" min="1" max="53" value="50"></div>
+  <div class="campo" id="campo-mes"><label>Mês</label>
+    <select id="f-mes">
+      <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+      <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+      <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+      <option value="10">Outubro</option><option value="11">Novembro</option><option value="12" selected>Dezembro</option>
+    </select>
+  </div>
+  <div class="campo" id="campo-trimestre"><label>Trimestre</label>
+    <select id="f-trimestre"><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option><option value="4" selected>T4</option></select>
+  </div>
+
+  <div class="campo"><label>Regional</label><select id="f-regional" onchange="cascatear('regional')"><option value="">Todas</option></select></div>
+  <div class="campo"><label>Revenda</label><select id="f-revenda" onchange="cascatear('revenda')"><option value="">Todas</option></select></div>
+  <div class="campo"><label>Gerente</label><select id="f-gerente" onchange="cascatear('gerente')"><option value="">Todos</option></select></div>
+  <div class="campo"><label>Supervisor</label><select id="f-supervisor" onchange="cascatear('supervisor')"><option value="">Todos</option></select></div>
+  <div class="campo"><label>Vendedor</label><select id="f-vendedor"><option value="">Todos</option></select></div>
+  <div class="campo" id="campo-produto" style="display:none"><label>Produto</label><select id="f-produto"><option value="">Todos</option></select></div>
+
+  <button class="aplicar" id="btn-aplicar" onclick="aplicarFiltros()" disabled>Carregando filtros…</button>
+</div>
+
+<main>
+  <div id="page-overview" class="page active">
+    <div class="cards" id="overview-cards"><div class="loading">Carregando KPIs…</div></div>
+    <div class="charts-row">
+      <div class="panel"><h3>Evolutivo — Faturamento, HL e PM</h3><div id="chart-evolutivo" style="height:320px"></div></div>
+      <div class="panel"><h3>Top 10 produtos (faturamento)</h3><div id="chart-topprodutos" style="height:320px"></div></div>
+    </div>
+    <div class="charts-row">
+      <div class="panel"><h3>Ranking de revendas (faturamento)</h3><div id="chart-ranking-revendas" style="height:320px"></div></div>
+      <div class="panel"><h3>Faturamento por regional</h3><div id="chart-regional-donut" style="height:320px"></div></div>
+    </div>
+    <div class="panel" style="margin-bottom:22px;">
+      <h3>Matriz BCG — rentabilidade × crescimento por produto</h3>
+      <div id="chart-bcg"><div class="loading">Carregando…</div></div>
+    </div>
+  </div>
+
+  <div id="page-analise" class="page">
+    <div class="charts-row" style="grid-template-columns:1fr 1fr;">
+      <div class="panel"><h3>Volume × PM por produto (giro vs. preço médio)</h3><div id="chart-quadrante" style="height:380px"></div></div>
+      <div class="panel">
+        <h3>Detalhe por produto</h3>
+        <div id="tabela-analise"><div class="loading">Carregando…</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://www.gstatic.com/charts/loader.js"></script>
+<script>
+google.charts.load('current', { packages: ['corechart', 'bar'] });
+
+let FILTRO_OPCOES = null;
+let PAGINA_ATUAL = 'overview';
+
+const KPI_LABELS = {
+  'Volume': { label: 'Volume (caixas)', unidade: 'cx', casas: 0 },
+  'Hectolitro': { label: 'Hectolitro', unidade: 'HL', casas: 1 },
+  'Faturamento': { label: 'Faturamento', unidade: 'R$', casas: 0, moeda: true },
+  'Inadimplencia': { label: 'Inadimplência', unidade: '%', casas: 1, pct: true },
+  'Clientes sem Compra': { label: 'Clientes sem Compra', unidade: '%', casas: 1, pct: true },
+  'Eficiencia de Visita': { label: 'Eficiência de Visita', unidade: '%', casas: 1, pct: true },
+};
+
+function fmt(v, cfg) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  if (cfg.pct) return (v * 100).toFixed(cfg.casas) + '%';
+  if (cfg.moeda) return 'R$ ' + Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+  return Number(v).toLocaleString('pt-BR', { maximumFractionDigits: cfg.casas });
+}
+
+function mostrarPagina(p) {
+  PAGINA_ATUAL = p;
+  document.getElementById('page-overview').classList.toggle('active', p === 'overview');
+  document.getElementById('page-analise').classList.toggle('active', p === 'analise');
+  document.getElementById('nav-overview').classList.toggle('active', p === 'overview');
+  document.getElementById('nav-analise').classList.toggle('active', p === 'analise');
+  document.getElementById('campo-produto').style.display = p === 'analise' ? 'flex' : 'none';
+  const assinaturaAtual = JSON.stringify(coletarSelecao());
+  if (ULTIMA_ASSINATURA[p] !== assinaturaAtual) {
+    aplicarFiltros();
+  }
+}
+
+function atualizarCamposPeriodo() {
+  const g = document.getElementById('f-granularidade').value;
+  document.getElementById('campo-dia').style.display = g === 'dia' ? 'flex' : 'none';
+  document.getElementById('campo-semana').style.display = g === 'semana' ? 'flex' : 'none';
+  document.getElementById('campo-mes').style.display = g === 'mes' ? 'flex' : 'none';
+  document.getElementById('campo-trimestre').style.display = g === 'trimestre' ? 'flex' : 'none';
+}
+
+function popularSelect(sel, itens, valueKey, labelKey) {
+  const atual = sel.value;
+  sel.innerHTML = sel.options[0].outerHTML;
+  itens.forEach(it => {
+    const opt = document.createElement('option');
+    opt.value = it[valueKey]; opt.textContent = it[labelKey];
+    sel.appendChild(opt);
+  });
+  if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+}
+
+function cascatear(nivel) {
+  const est = FILTRO_OPCOES.estrutura;
+  const regional = document.getElementById('f-regional').value;
+  const revenda = document.getElementById('f-revenda').value;
+  const gerente = document.getElementById('f-gerente').value;
+  const supervisor = document.getElementById('f-supervisor').value;
+
+  if (nivel === 'regional') {
+    let revs = est.filter(e => !regional || e.cod_regional === regional);
+    revs = dedup_(revs, 'cod_revenda', 'nome_revenda');
+    popularSelect(document.getElementById('f-revenda'), revs, 'cod_revenda', 'nome_revenda');
+    document.getElementById('f-revenda').value = '';
+    cascatear('revenda');
+    return;
+  }
+  if (nivel === 'revenda' || nivel === 'gerente' || nivel === 'supervisor') {
+    let base = est.filter(e => (!regional || e.cod_regional === regional) && (!revenda || e.cod_revenda === revenda));
+    if (nivel !== 'revenda') base = base.filter(e => !gerente || e.cod_gerente === gerente);
+    if (nivel === 'supervisor' || nivel === 'gerente') {
+      const gers = dedup_(base, 'cod_gerente', 'nome_gerente');
+      popularSelect(document.getElementById('f-gerente'), gers, 'cod_gerente', 'nome_gerente');
+    }
+    let baseSup = est.filter(e => (!regional || e.cod_regional === regional) && (!revenda || e.cod_revenda === revenda) && (!gerente || e.cod_gerente === gerente));
+    const sups = dedup_(baseSup, 'cod_supervisor', 'nome_supervisor');
+    popularSelect(document.getElementById('f-supervisor'), sups, 'cod_supervisor', 'nome_supervisor');
+
+    let baseVend = est.filter(e => (!regional || e.cod_regional === regional) && (!revenda || e.cod_revenda === revenda) && (!gerente || e.cod_gerente === gerente) && (!supervisor || e.cod_supervisor === supervisor));
+    const vends = dedup_(baseVend, 'cod_vendedor', 'nome_vendedor');
+    popularSelect(document.getElementById('f-vendedor'), vends, 'cod_vendedor', 'nome_vendedor');
+  }
+}
+
+function dedup_(arr, keyField, labelField) {
+  const seen = new Set(); const out = [];
+  arr.forEach(a => { if (!seen.has(a[keyField])) { seen.add(a[keyField]); out.push({ [keyField]: a[keyField], [labelField]: a[labelField] }); } });
+  return out;
+}
+
+function coletarFiltros() {
+  return {
+    cod_regional: document.getElementById('f-regional').value || null,
+    cod_revenda: document.getElementById('f-revenda').value || null,
+    cod_gerente: document.getElementById('f-gerente').value || null,
+    cod_supervisor: document.getElementById('f-supervisor').value || null,
+    cod_vendedor: document.getElementById('f-vendedor').value || null,
+    cod_sku: document.getElementById('f-produto').value || null,
+  };
+}
+
+function coletarSelecao() {
+  return {
+    granularidade: document.getElementById('f-granularidade').value,
+    ano: document.getElementById('f-ano').value,
+    dia: document.getElementById('f-dia').value,
+    semana: document.getElementById('f-semana').value,
+    mes: document.getElementById('f-mes').value,
+    trimestre: document.getElementById('f-trimestre').value,
+    filtros: coletarFiltros(),
+  };
+}
+
+// Assinatura (JSON dos filtros) usada na ultima carga bem-sucedida de cada
+// pagina. Trocar de aba sem mudar filtro so reexibe o que ja esta no DOM
+// (as paginas nunca sao destruidas, so escondidas via CSS) em vez de
+// consultar o Databricks de novo.
+const ULTIMA_ASSINATURA = { overview: null, analise: null };
+
+function aplicarFiltros() {
+  const sel = coletarSelecao();
+  const assinatura = JSON.stringify(sel);
+  if (PAGINA_ATUAL === 'overview') {
+    ULTIMA_ASSINATURA.overview = assinatura;
+    document.getElementById('overview-cards').innerHTML = '<div class="loading">Carregando KPIs…</div>';
+    document.getElementById('chart-evolutivo').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('chart-topprodutos').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('chart-bcg').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('chart-ranking-revendas').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('chart-regional-donut').innerHTML = '<div class="loading">Carregando…</div>';
+    google.script.run.withSuccessHandler(renderOverview)
+      .withFailureHandler(err => { ULTIMA_ASSINATURA.overview = null; mostrarErro_(err); })
+      .getOverviewData(sel);
+  } else {
+    ULTIMA_ASSINATURA.analise = assinatura;
+    document.getElementById('chart-quadrante').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('tabela-analise').innerHTML = '<div class="loading">Carregando…</div>';
+    google.script.run.withSuccessHandler(renderAnalise)
+      .withFailureHandler(err => { ULTIMA_ASSINATURA.analise = null; mostrarErro_(err); })
+      .getAnaliseData(sel);
+  }
+}
+
+function mostrarErro_(err) {
+  alert('Erro ao consultar Databricks: ' + (err && err.message ? err.message : err));
+  console.error(err);
+}
+
+// --- Overview -----------------------------------------------------------
+
+function renderOverview(data) {
+  const cont = document.getElementById('overview-cards');
+  cont.innerHTML = '';
+  data.cards.forEach(c => cont.appendChild(renderCard_(c)));
+  desenharEvolutivo_(data.evolutivo);
+  desenharTopProdutos_(data.topProdutos);
+  desenharBcg_(data.bcg);
+  desenharRankingRevendas_(data.rankingRevendas);
+  desenharRegionalDonut_(data.regionalDonut);
+}
+
+function renderCard_(c) {
+  const cfg = KPI_LABELS[c.kpi];
+  const div = document.createElement('div');
+  div.className = 'card' + (c.kpi === 'Hectolitro' ? ' bottle-card' : '');
+
+  const infos = document.createElement('div');
+  infos.className = 'infos';
+  infos.innerHTML = `
+    <div class="titulo">${cfg.label}</div>
+    <div class="valor">${fmt(c.realizado, cfg)}</div>
+    ${linhaDesvio_(c.desvioMeta, 'vs meta', c.acimaMeta)}
+    ${linhaDesvio_(c.variacaoAnterior, 'vs período anterior', c.acimaAnterior)}
+  `;
+
+  if (c.kpi === 'Hectolitro') {
+    const pct = c.meta ? Math.max(0, Math.min(1.15, c.realizado / c.meta)) : 0;
+    const svgWrap = document.createElement('div');
+    svgWrap.innerHTML = bottleSvg_(pct);
+    div.appendChild(svgWrap);
+    div.appendChild(infos);
+  } else {
+    div.appendChild(infos);
+  }
+  return div;
+}
+
+function linhaDesvio_(d, rotulo, bom) {
+  if (!d || d.valor === null || d.valor === undefined || isNaN(d.valor)) return `<div class="linha">${rotulo}: —</div>`;
+  // A seta segue o sinal real (realizado subiu ou desceu em relacao a referencia).
+  // A cor segue "bom", calculado no servidor considerando a direcao do KPI
+  // (Inadimplencia/Clientes sem Compra/Devolucoes: menor e melhor) — sem essa
+  // distincao, uma inadimplencia de 9,5% (ruim) aparecia com seta verde so
+  // porque o numero e "positivo" em relacao a meta de 1%.
+  const acima = d.valor >= 0;
+  const seta = acima ? '▲' : '▼';
+  const cls = bom === null || bom === undefined ? '' : (bom ? 'seta-up' : 'seta-down');
+  const valorFmt = Math.abs(d.valor).toFixed(1) + (d.unidade === 'pp' ? ' pp' : '%');
+  return `<div class="linha"><span class="${cls}">${seta} ${valorFmt}</span>&nbsp;${rotulo}</div>`;
+}
+
+// --- Garrafa (SVG fill gauge) --------------------------------------------
+
+function bottleSvg_(pct) {
+  const bottlePath = 'M40,4 L60,4 L60,58 C60,68 70,73 78,88 C88,103 90,113 90,128 L90,268 C90,283 80,293 65,293 L35,293 C20,293 10,283 10,268 L10,128 C10,113 12,103 22,88 C30,73 40,68 40,58 Z';
+  // topY = base do gargalo (onde o corpo comeca a alargar). O liquido nunca
+  // sobe pro gargalo — a linha de meta (100%) fica exatamente nesse ponto,
+  // igual a uma garrafa de verdade cheia ate a base do gargalo.
+  const totalH = 293, topY = 58;
+  const pctClamp = Math.max(0, Math.min(1, pct));
+  const liquidH = pctClamp * (totalH - topY);
+  const liquidY = totalH - liquidH;
+  // Sempre cor de cerveja (ambar) — quem sinaliza acima/abaixo da meta e a seta+texto do card, nao a cor do liquido.
+  const cor = '#c9820f';
+  const corClara = '#f3b13a';
+  const temEspuma = liquidH > 10;
+  const espumaH = Math.min(14, liquidH * 0.4);
+  const espumaY = liquidY - espumaH;
+  const uid = 'b' + Math.floor(Math.random() * 100000);
+
+  const bolhasEspuma = temEspuma ? [18, 32, 48, 62, 78].map((cx, i) =>
+    `<circle cx="${cx}" cy="${espumaY + (i % 2 === 0 ? 2 : 6)}" r="${5 + (i % 3)}" fill="#fdfcf6"/>`
+  ).join('') : '';
+
+  const capTicks = [0, 1, 2, 3, 4, 5, 6, 7]
+    .map(i => `<line x1="${35 + i * 4}" y1="2" x2="${35 + i * 4}" y2="11" stroke="#8a6816" stroke-width="1" opacity="0.55"/>`)
+    .join('');
+
+  return `
+  <svg width="90" height="220" viewBox="0 0 100 300" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <clipPath id="clip-${uid}"><path d="${bottlePath}"/></clipPath>
+      <linearGradient id="liq-${uid}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${corClara}"/>
+        <stop offset="100%" stop-color="${cor}"/>
+      </linearGradient>
+      <linearGradient id="cap-${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f2d688"/>
+        <stop offset="100%" stop-color="#c99a2e"/>
+      </linearGradient>
+    </defs>
+    <path d="${bottlePath}" fill="#20242c" stroke="#3a4050" stroke-width="2"/>
+    <g clip-path="url(#clip-${uid})">
+      <rect x="0" y="${liquidY}" width="100" height="${liquidH}" fill="url(#liq-${uid})">
+        <animate attributeName="y" from="293" to="${liquidY}" dur="1.1s" fill="freeze"/>
+        <animate attributeName="height" from="0" to="${liquidH}" dur="1.1s" fill="freeze"/>
+      </rect>
+      ${temEspuma ? `<rect x="0" y="${espumaY}" width="100" height="${espumaH + 4}" fill="#fdfcf6"><animate attributeName="y" from="293" to="${espumaY}" dur="1.1s" fill="freeze"/></rect>${bolhasEspuma}` : ''}
+      <circle cx="30" cy="${totalH - 20}" r="3" fill="#fff5"><animate attributeName="cy" values="${totalH - 20};${liquidY + 5}" dur="2.4s" repeatCount="indefinite"/></circle>
+      <circle cx="55" cy="${totalH - 40}" r="2.2" fill="#fff4"><animate attributeName="cy" values="${totalH - 40};${liquidY + 5}" dur="1.8s" repeatCount="indefinite"/></circle>
+      <circle cx="68" cy="${totalH - 10}" r="2.6" fill="#fff5"><animate attributeName="cy" values="${totalH - 10};${liquidY + 5}" dur="2.1s" repeatCount="indefinite"/></circle>
+    </g>
+    <path d="${bottlePath}" fill="none" stroke="#4a5062" stroke-width="2"/>
+    <line x1="6" y1="${topY}" x2="94" y2="${topY}" stroke="#e8eaf0" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <text x="50" y="${topY - 6}" fill="#9aa3b2" font-size="9" text-anchor="middle">meta</text>
+    <rect x="33" y="0" width="34" height="13" rx="3" fill="url(#cap-${uid})" stroke="#8a6816" stroke-width="1.2"/>
+    ${capTicks}
+  </svg>`;
+}
+
+// --- Charts ---------------------------------------------------------------
+
+function desenharEvolutivo_(rows) {
+  if (!google.visualization) { setTimeout(() => desenharEvolutivo_(rows), 300); return; }
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('date', 'Data'); dt.addColumn('number', 'Faturamento (R$)');
+  dt.addColumn('number', 'HL'); dt.addColumn('number', 'PM (R$)');
+  rows.forEach(r => dt.addRow([new Date(r.data), Number(r.faturamento) || 0, Number(r.hl) || 0, Number(r.pm) || 0]));
+  const chart = new google.visualization.LineChart(document.getElementById('chart-evolutivo'));
+  chart.draw(dt, {
+    backgroundColor: 'transparent', colors: ['#e0a11c', '#2fbf71', '#5aa9e6'],
+    legend: { position: 'top', textStyle: { color: '#e8eaf0' } },
+    hAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    series: { 2: { targetAxisIndex: 1 } },
+    vAxes: { 0: {}, 1: { textStyle: { color: '#9aa3b2' } } },
+    chartArea: { width: '85%', height: '75%' },
+  });
+}
+
+function desenharTopProdutos_(rows) {
+  if (!google.visualization) { setTimeout(() => desenharTopProdutos_(rows), 300); return; }
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('string', 'Produto'); dt.addColumn('number', 'Faturamento');
+  rows.forEach(r => dt.addRow([r.nome_completo, Number(r.faturamento) || 0]));
+  const chart = new google.visualization.BarChart(document.getElementById('chart-topprodutos'));
+  chart.draw(dt, {
+    backgroundColor: 'transparent', colors: ['#e0a11c'], legend: { position: 'none' },
+    hAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    vAxis: { textStyle: { color: '#e8eaf0', fontSize: 10 } },
+    chartArea: { width: '55%', height: '90%' },
+  });
+}
+
+function desenharRankingRevendas_(rows) {
+  const cont = document.getElementById('chart-ranking-revendas');
+  if (!google.visualization) { setTimeout(() => desenharRankingRevendas_(rows), 300); return; }
+  if (!rows || !rows.length) { cont.innerHTML = '<div class="loading">Sem dados no período.</div>'; return; }
+
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('string', 'Revenda');
+  dt.addColumn('number', 'Faturamento');
+  dt.addColumn({ type: 'string', role: 'style' });
+  dt.addColumn({ type: 'string', role: 'tooltip' });
+
+  rows.forEach(r => {
+    const cor = r.acimaMeta === null ? '#9aa3b2' : (r.acimaMeta ? '#2fbf71' : '#e5484d');
+    const desvioTxt = r.desvioPct === null ? 'sem meta' : `${r.desvioPct >= 0 ? '+' : ''}${r.desvioPct.toFixed(1)}% vs meta`;
+    const tip = `${r.nome_revenda} (${r.porte_revenda})\nFaturamento: R$ ${r.faturamento.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}\n${desvioTxt}`;
+    dt.addRow([`${r.nome_revenda} (${r.porte_revenda})`, r.faturamento, cor, tip]);
+  });
+
+  const chart = new google.visualization.BarChart(cont);
+  chart.draw(dt, {
+    backgroundColor: 'transparent', legend: { position: 'none' },
+    hAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    vAxis: { textStyle: { color: '#e8eaf0', fontSize: 11 } },
+    chartArea: { width: '55%', height: '90%' },
+  });
+}
+
+function desenharRegionalDonut_(rows) {
+  const cont = document.getElementById('chart-regional-donut');
+  if (!google.visualization) { setTimeout(() => desenharRegionalDonut_(rows), 300); return; }
+  if (!rows || !rows.length) { cont.innerHTML = '<div class="loading">Sem dados no período.</div>'; return; }
+
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('string', 'Regional');
+  dt.addColumn('number', 'Faturamento');
+  rows.forEach(r => dt.addRow([r.nome_regional, Number(r.faturamento) || 0]));
+
+  const chart = new google.visualization.PieChart(cont);
+  chart.draw(dt, {
+    backgroundColor: 'transparent', pieHole: 0.45,
+    colors: ['#e0a11c', '#5aa9e6', '#2fbf71', '#9aa3b2'],
+    legend: { position: 'right', textStyle: { color: '#e8eaf0' } },
+    pieSliceTextStyle: { color: '#0f1115', fontSize: 12 },
+    chartArea: { width: '90%', height: '85%' },
+  });
+}
+
+// --- Matriz BCG (Overview) --------------------------------------------------
+// X = rentabilidade (share do lucro estimado do produto no escopo filtrado —
+// lucro = faturamento x margem sintetica por categoria_embalagem/marca, ja
+// que Retornavel/Barril tem custo de materia-prima menor por reuso da
+// embalagem vs Descartavel). Alta fica a esquerda, Baixa a direita — igual a
+// convencao classica do BCG (que usa participacao de mercado; aqui usamos
+// rentabilidade porque nao ha dado de concorrente externo para market share).
+// Y = crescimento do lucro estimado vs periodo anterior. Alto em cima, Baixo
+// embaixo. Posicionamento por percentil (rank), nao valor bruto, para nao
+// empilhar tudo num canto quando poucos SKUs dominam o volume.
+
+const BCG_CORES = {
+  'Estrela': { bg: 'rgba(47,191,113,0.16)', dot: '#2fbf71', icone: '⭐' },
+  'Em Questionamento': { bg: 'rgba(90,169,230,0.16)', dot: '#5aa9e6', icone: '❓' },
+  'Vaca Leiteira': { bg: 'rgba(224,161,28,0.16)', dot: '#e0a11c', icone: '🐄' },
+  'Abacaxi': { bg: 'rgba(154,163,178,0.16)', dot: '#9aa3b2', icone: '🍍' },
+};
+
+// Icones desenhados centrados em (0,0), pensados p/ escala ~1 = ~12px de
+// altura. O chamador posiciona com transform="translate(x,y) scale(s)".
+function iconePacote_(embalagem, cor) {
+  const escuro = '#0f1115';
+  if (embalagem === 'Lata') {
+    return `
+      <rect x="-4" y="-9" width="8" height="18" rx="1.5" fill="${cor}" fill-opacity="0.9" stroke="${escuro}" stroke-width="0.6"/>
+      <rect x="-4" y="-9" width="8" height="2" rx="1" fill="${escuro}" fill-opacity="0.35"/>
+      <rect x="-4" y="7" width="8" height="2" rx="1" fill="${escuro}" fill-opacity="0.35"/>`;
+  }
+  if (embalagem === 'PET') {
+    return `
+      <path d="M-3,-11 L3,-11 L3,-6 C4.5,-4.8 5,-3 5,0 L5,9 C5,11.2 3,12.5 0,12.5 C-3,12.5 -5,11.2 -5,9 L-5,0 C-5,-3 -4.5,-4.8 -3,-6 Z"
+        fill="${cor}" fill-opacity="0.55" stroke="${cor}" stroke-width="1"/>
+      <rect x="-3" y="-12.5" width="6" height="2" rx="0.8" fill="${escuro}" fill-opacity="0.5"/>`;
+  }
+  if (embalagem === 'Garrafa Retornavel') {
+    return `
+      <path d="M-2.5,-12 L2.5,-12 L2.5,-6 C4,-4.3 5,-2 5,2 L5,9 C5,11.5 3,13 0,13 C-3,13 -5,11.5 -5,9 L-5,2 C-5,-2 -4,-4.3 -2.5,-6 Z"
+        fill="${cor}" fill-opacity="0.9" stroke="${escuro}" stroke-width="0.6"/>
+      <rect x="-2.5" y="-13.5" width="5" height="2" rx="0.6" fill="${escuro}" fill-opacity="0.6"/>`;
+  }
+  if (embalagem === 'Barril') {
+    return `
+      <path d="M-6,-10 C-8.5,-10 -8.5,10 -6,10 L6,10 C8.5,10 8.5,-10 6,-10 Z"
+        fill="${cor}" fill-opacity="0.9" stroke="${escuro}" stroke-width="0.6"/>
+      <line x1="-8" y1="-4" x2="8" y2="-4" stroke="${escuro}" stroke-opacity="0.35" stroke-width="1"/>
+      <line x1="-8" y1="4" x2="8" y2="4" stroke="${escuro}" stroke-opacity="0.35" stroke-width="1"/>`;
+  }
+  return `<circle cx="0" cy="0" r="6" fill="${cor}" fill-opacity="0.85" stroke="${escuro}" stroke-width="0.6"/>`;
+}
+
+function desenharBcg_(produtos) {
+  const cont = document.getElementById('chart-bcg');
+  if (!produtos || !produtos.length) { cont.innerHTML = '<div class="loading">Sem dados de venda no período para montar a matriz.</div>'; return; }
+
+  const W = 640, H = 420;
+  const px0 = 70, px1 = 600, py0 = 30, py1 = 360;
+  const midX = (px0 + px1) / 2, midY = (py0 + py1) / 2;
+  const larg = px1 - px0, alt = py1 - py0;
+
+  const maxVol = Math.max(...produtos.map(p => p.volume_hl));
+  const escalaProduto = p => {
+    const porVolume = 0.6 + 1.05 * Math.sqrt(p.volume_hl / maxVol);
+    const porCapacidade = Math.min(1.3, 0.85 + (p.capacidade_ml || 0) / 8000);
+    return porVolume * porCapacidade;
+  };
+
+  const quadrantes = [
+    { key: 'Estrela', x: px0, y: py0, w: larg / 2, h: alt / 2, labelX: px0 + 16, labelY: py0 + 26 },
+    { key: 'Em Questionamento', x: midX, y: py0, w: larg / 2, h: alt / 2, labelX: midX + 16, labelY: py0 + 26 },
+    { key: 'Vaca Leiteira', x: px0, y: midY, w: larg / 2, h: alt / 2, labelX: px0 + 16, labelY: midY + 26 },
+    { key: 'Abacaxi', x: midX, y: midY, w: larg / 2, h: alt / 2, labelX: midX + 16, labelY: midY + 26 },
+  ];
+
+  const fundos = quadrantes.map(q => `
+    <rect x="${q.x}" y="${q.y}" width="${q.w}" height="${q.h}" fill="${BCG_CORES[q.key].bg}" stroke="#2a2f3a" stroke-width="1"/>
+    <text x="${q.labelX}" y="${q.labelY}" font-size="20">${BCG_CORES[q.key].icone}</text>
+    <text x="${q.labelX + 26}" y="${q.labelY - 1}" fill="#c8ccd6" font-size="12" font-weight="600">${q.key}</text>
+  `).join('');
+
+  const pontos = produtos.map(p => {
+    const x = px0 + p.percentilParticipacao * larg;
+    const y = py0 + p.percentilCrescimento * alt;
+    const cor = BCG_CORES[p.quadrante].dot;
+    const tip = `${p.nome} (${p.marca})\nEmbalagem: ${p.categoria_embalagem} — margem estimada ${(p.margem * 100).toFixed(0)}%\nRentabilidade (share do lucro estimado): ${(p.participacao * 100).toFixed(1)}%\nCrescimento do lucro: ${(p.crescimento * 100).toFixed(1)}%\nVolume: ${p.volume_hl.toFixed(1)} HL — Faturamento: R$ ${p.faturamento.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+    const s = escalaProduto(p);
+    return `<g transform="translate(${x},${y}) scale(${s})">${iconePacote_(p.embalagem_fisica, cor)}<title>${tip}</title></g>`;
+  }).join('');
+
+  const svg = `
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%; height:420px;" xmlns="http://www.w3.org/2000/svg">
+    ${fundos}
+    <line x1="${midX}" y1="${py0}" x2="${midX}" y2="${py1}" stroke="#4a5062" stroke-width="1.5"/>
+    <line x1="${px0}" y1="${midY}" x2="${px1}" y2="${midY}" stroke="#4a5062" stroke-width="1.5"/>
+    <rect x="${px0}" y="${py0}" width="${larg}" height="${alt}" fill="none" stroke="#4a5062" stroke-width="1.5"/>
+    ${pontos}
+    <text x="${px0}" y="${py0 - 10}" fill="#9aa3b2" font-size="11">← Alta rentabilidade</text>
+    <text x="${px1}" y="${py0 - 10}" fill="#9aa3b2" font-size="11" text-anchor="end">Baixa rentabilidade →</text>
+    <text x="${px0 - 10}" y="${py0 + 10}" fill="#9aa3b2" font-size="11" text-anchor="end">Alto</text>
+    <text x="${px0 - 10}" y="${py1}" fill="#9aa3b2" font-size="11" text-anchor="end">Baixo</text>
+    <text x="${px0 - 45}" y="${midY}" fill="#9aa3b2" font-size="11" text-anchor="middle" transform="rotate(-90 ${px0 - 45} ${midY})">Crescimento do lucro</text>
+  </svg>`;
+  cont.innerHTML = svg;
+}
+
+// --- Analise ---------------------------------------------------------------
+
+function renderAnalise(data) {
+  desenharQuadrante_(data.quadrante, data.medianaVolume, data.medianaPm);
+  const cont = document.getElementById('tabela-analise');
+  let html = '<table class="dados"><thead><tr><th>Produto</th><th>Caixas</th><th>HL</th><th>Faturamento</th><th>PM</th></tr></thead><tbody>';
+  data.tabela.forEach(r => {
+    html += `<tr><td>${r.nome_completo}</td><td>${Number(r.qtd_caixas).toLocaleString('pt-BR')}</td><td>${Number(r.volume_hl).toFixed(1)}</td><td>R$ ${Number(r.faturamento).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td><td>R$ ${Number(r.pm).toFixed(2)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  cont.innerHTML = html;
+}
+
+function desenharQuadrante_(pontos, medVolume, medPm) {
+  if (!google.visualization) { setTimeout(() => desenharQuadrante_(pontos, medVolume, medPm), 300); return; }
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('number', 'Volume (caixas)');
+  dt.addColumn('number', 'PM (R$)');
+  dt.addColumn({ type: 'string', role: 'tooltip' });
+  pontos.forEach(p => dt.addRow([p.volume, p.pm, `${p.nome} (${p.marca})\n${p.quadrante}`]));
+  const chart = new google.visualization.ScatterChart(document.getElementById('chart-quadrante'));
+  chart.draw(dt, {
+    backgroundColor: 'transparent', colors: ['#e0a11c'],
+    hAxis: { title: 'Volume (caixas)', titleTextStyle: { color: '#9aa3b2' }, textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, baseline: medVolume, baselineColor: '#5aa9e6' },
+    vAxis: { title: 'PM (R$)', titleTextStyle: { color: '#9aa3b2' }, textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, baseline: medPm, baselineColor: '#5aa9e6' },
+    legend: 'none', pointSize: 8,
+    chartArea: { width: '80%', height: '75%' },
+  });
+}
+
+// --- Bootstrap ---------------------------------------------------------------
+
+function iniciar() {
+  atualizarCamposPeriodo();
+  google.script.run.withSuccessHandler(function (opcoes) {
+    FILTRO_OPCOES = opcoes;
+    const anos = opcoes.anos;
+    const selAno = document.getElementById('f-ano');
+    anos.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; selAno.appendChild(o); });
+    selAno.value = anos[anos.length - 1];
+
+    const regs = dedup_(opcoes.estrutura, 'cod_regional', 'nome_regional');
+    popularSelect(document.getElementById('f-regional'), regs, 'cod_regional', 'nome_regional');
+    cascatear('regional');
+
+    const prodSel = document.getElementById('f-produto');
+    opcoes.produtos.forEach(p => { const o = document.createElement('option'); o.value = p.cod_sku; o.textContent = p.nome_completo; prodSel.appendChild(o); });
+
+    const btn = document.getElementById('btn-aplicar');
+    btn.disabled = false; btn.textContent = 'Aplicar';
+
+    aplicarFiltros();
+  }).withFailureHandler(mostrarErro_).getFiltroOpcoes();
+}
+
+google.charts.setOnLoadCallback(iniciar);
+</script>
