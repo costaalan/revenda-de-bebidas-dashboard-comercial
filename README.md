@@ -4,6 +4,10 @@ Base de dados fictícia (porém estatisticamente coerente) de uma distribuidora 
 bebidas, gerada no Databricks, com um dashboard comercial de KPIs construído em
 Google Apps Script (Web App) consultando o Databricks via REST.
 
+**Dashboard ao vivo:** https://script.google.com/macros/s/AKfycbyo6ih-9SUHOV1Gddw5l9mR9L6sPHPvp5wpN6PxfZDKyRQvJGcicWfLXWxGppTLyK6kxQ/exec
+(primeiro acesso de cada conta mostra a tela "app não verificado" do Google —
+normal para Web Apps pessoais; clique em Avançado → Acessar mesmo assim.)
+
 > **Dados sintéticos.** Nomes de clientes, vendedores e volumes de venda são
 > gerados artificialmente (Faker + regras de negócio + seeds fixas). Não há
 > nenhum dado real de nenhuma empresa aqui.
