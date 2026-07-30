@@ -113,7 +113,7 @@
     </div>
     <div class="panel" style="margin-bottom:22px;">
       <h3 id="titulo-projecao">Projeção — Faturamento</h3>
-      <div id="chart-projecao" style="height:340px"><div class="loading">Carregando…</div></div>
+      <div id="chart-projecao" style="height:380px"><div class="loading">Carregando…</div></div>
       <div id="legenda-projecao" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
     </div>
   </div>
@@ -649,8 +649,11 @@ function desenharProjecao_(proj) {
       textStyle: { color: '#9aa3b2', fontSize: 10 }, gridlines: { color: '#2a2f3a' },
       format: formatoData, showTextEvery: 1, slantedText: true, slantedTextAngle: 30,
     },
-    vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, minValue: 0, format: "'R$'#,##0" },
-    chartArea: { width: '88%', height: '65%' },
+    vAxis: {
+      textStyle: { color: '#c8ccd6', fontSize: 11 }, gridlines: { color: '#2a2f3a' },
+      minValue: 0, format: "'R$'#,##0",
+    },
+    chartArea: { left: 110, top: 40, width: '80%', height: '60%' },
   });
 
   const tendenciaTxt = proj.slope >= 0 ? 'alta' : 'queda';
