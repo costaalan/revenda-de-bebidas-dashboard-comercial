@@ -596,21 +596,33 @@ function desenharProjecao_(proj) {
   if (!google.visualization) { setTimeout(() => desenharProjecao_(proj), 300); return; }
   if (!proj || !proj.buckets || !proj.buckets.length) { cont.innerHTML = '<div class="loading">Sem dados suficientes pra projetar.</div>'; return; }
 
+  const fmtReais_ = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
   const dt = new google.visualization.DataTable();
   dt.addColumn('date', 'Período');
   dt.addColumn('number', 'Histórico');
   dt.addColumn('number', 'Projeção');
   dt.addColumn({ type: 'number', role: 'interval' });
   dt.addColumn({ type: 'number', role: 'interval' });
+  dt.addColumn({ type: 'string', role: 'tooltip' });
   dt.addColumn('number', 'Realizado (comparação)');
 
   for (let i = 0; i < proj.buckets.length; i++) {
+    const v = proj.projecao[i];
+    const min = proj.projecaoMin[i];
+    const max = proj.projecaoMax[i];
+    let tooltipProjecao = null;
+    if (v !== null && min !== null && max !== null && v !== 0) {
+      const margemPct = ((max - v) / v) * 100;
+      tooltipProjecao = `Projeção: ${fmtReais_(v)}\nMargem de erro: ±${margemPct.toFixed(1).replace('.', ',')}% (${fmtReais_(min)} a ${fmtReais_(max)})`;
+    }
     dt.addRow([
       new Date(proj.buckets[i]),
       proj.historico[i],
-      proj.projecao[i],
-      proj.projecaoMin[i],
-      proj.projecaoMax[i],
+      v,
+      min,
+      max,
+      tooltipProjecao,
       proj.realizadoFuturo[i],
     ]);
   }
@@ -618,7 +630,7 @@ function desenharProjecao_(proj) {
   const formatoReais = new google.visualization.NumberFormat({
     prefix: 'R$ ', fractionDigits: 0, groupingSymbol: '.', decimalSymbol: ',',
   });
-  [1, 2, 3, 4, 5].forEach(col => formatoReais.format(dt, col));
+  [1, 2, 3, 4, 6].forEach(col => formatoReais.format(dt, col));
 
   const formatoData = { dia: 'dd/MM', semana: 'dd/MM', mes: 'MMM-yyyy', trimestre: 'MMM-yyyy' }[proj.granularidade] || 'MMM-yyyy';
 
@@ -637,7 +649,7 @@ function desenharProjecao_(proj) {
       textStyle: { color: '#9aa3b2', fontSize: 10 }, gridlines: { color: '#2a2f3a' },
       format: formatoData, showTextEvery: 1, slantedText: true, slantedTextAngle: 30,
     },
-    vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, minValue: 0, format: '"R$"#,##0' },
+    vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, minValue: 0, format: "'R$'#,##0" },
     chartArea: { width: '88%', height: '65%' },
   });
 
