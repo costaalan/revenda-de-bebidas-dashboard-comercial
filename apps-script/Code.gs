@@ -574,7 +574,9 @@ function getAnaliseData(sel) {
     quadrante: classificarQuadrante_(Number(r.qtd_caixas) || 0, Number(r.pm) || 0, medianaVolume, medianaPm),
   }));
 
-  return { periodo, tabela, quadrante, medianaVolume, medianaPm };
+  const projecao = montarProjecao_(sel.granularidade, periodo, filtros);
+
+  return { periodo, tabela, quadrante, medianaVolume, medianaPm, projecao };
 }
 
 function mediana_(arr) {
@@ -589,4 +591,139 @@ function classificarQuadrante_(volume, pm, medVolume, medPm) {
   if (volume >= medVolume && pm < medPm) return 'Alto giro / Baixo PM';
   if (volume < medVolume && pm >= medPm) return 'Baixo giro / Alto PM';
   return 'Baixo giro / Baixo PM';
+}
+
+// ---------------------------------------------------------------------------
+// Projecao linear (regressao OLS) — Faturamento geral ou de um produto (se
+// filtrado), com banda de erro (intervalo de previsao) e comparacao com o
+// realizado quando a janela projetada ja tem dado real disponivel (permite
+// "backtestar" visualmente: a linha de projecao passa paralela a realizada).
+//
+// Nao usamos ARIMA/Prophet/ML pesado de proposito: regressao linear OLS ja e
+// um modelo estatistico legitimo, roda instantaneo sem infra extra (nao tem
+// como rodar Python/sklearn a partir do Apps Script sem um servico externo),
+// e o ganho de um modelo mais sofisticado seria marginal pra dados sinteticos
+// com sazonalidade ja conhecida.
+// ---------------------------------------------------------------------------
+const PROJECAO_CONFIG = {
+  dia: { unit: 'DAY', nHist: 7, nProj: 7 },
+  semana: { unit: 'WEEK', nHist: 8, nProj: 8 },
+  mes: { unit: 'MONTH', nHist: 12, nProj: 6 },
+  trimestre: { unit: 'QUARTER', nHist: 8, nProj: 4 },
+};
+
+// t-critico (95%) por grau de liberdade (n-2) — melhora a banda de erro em
+// amostras pequenas em vez de usar sempre a aproximacao normal (1.96).
+const T_CRITICO_95 = { 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228 };
+function tCritico_(df) {
+  return T_CRITICO_95[df] || 1.96;
+}
+
+const MAX_DATA_DISPONIVEL = '2020-12-31'; // limite fixo da base sintetica gerada
+
+function sqlJanelaProjecao_(gran, periodo) {
+  const cfg = PROJECAO_CONFIG[gran];
+  let histStart, projEnd;
+  if (gran === 'dia') {
+    histStart = `date_sub('${periodo.inicio}', ${cfg.nHist - 1})`;
+    projEnd = `date_add('${periodo.fim}', ${cfg.nProj})`;
+  } else if (gran === 'semana') {
+    histStart = `date_sub('${periodo.inicio}', ${(cfg.nHist - 1) * 7})`;
+    projEnd = `date_add('${periodo.fim}', ${cfg.nProj * 7})`;
+  } else if (gran === 'mes') {
+    histStart = `add_months('${periodo.inicio}', -${cfg.nHist - 1})`;
+    projEnd = `last_day(add_months('${periodo.fim}', ${cfg.nProj}))`;
+  } else {
+    histStart = `add_months('${periodo.inicio}', -${(cfg.nHist - 1) * 3})`;
+    projEnd = `last_day(add_months('${periodo.fim}', ${cfg.nProj * 3}))`;
+  }
+  return `SELECT ${histStart} AS hist_start, ${projEnd} AS proj_end`;
+}
+
+function montarProjecao_(gran, periodo, filtros) {
+  const cfg = PROJECAO_CONFIG[gran];
+  const janela = dbQuery_(sqlJanelaProjecao_(gran, periodo))[0];
+  const histStart = janela.hist_start;
+  const projEnd = janela.proj_end;
+  const prodFiltro = filtros.cod_sku ? `AND cod_sku = '${sqlEsc_(filtros.cod_sku)}'` : '';
+
+  const rows = dbQuery_(`
+    WITH dias AS (
+      SELECT explode(sequence(to_date('${sqlEsc_(histStart)}'), to_date('${sqlEsc_(projEnd)}'), interval 1 day)) AS d
+    ),
+    buckets AS (
+      SELECT DISTINCT date_trunc('${cfg.unit}', d) AS bucket FROM dias
+    ),
+    vendas AS (
+      SELECT date_trunc('${cfg.unit}', data) AS bucket, SUM(valor_total_reais) AS faturamento
+      FROM ${SCHEMA}.TBCERVA_gold_vendas_dia
+      WHERE data BETWEEN '${sqlEsc_(histStart)}' AND '${sqlEsc_(projEnd)}' ${whereHierarquia_(filtros, null)} ${prodFiltro}
+      GROUP BY date_trunc('${cfg.unit}', data)
+    )
+    SELECT b.bucket, COALESCE(v.faturamento, 0) AS faturamento
+    FROM buckets b LEFT JOIN vendas v ON b.bucket = v.bucket
+    ORDER BY b.bucket
+  `);
+
+  const historico = rows.slice(0, cfg.nHist);
+  const futuro = rows.slice(cfg.nHist, cfg.nHist + cfg.nProj);
+
+  // regressao OLS sobre o historico: x = indice (0..nHist-1), y = faturamento
+  const n = historico.length;
+  const xs = historico.map((_, i) => i);
+  const ys = historico.map(r => Number(r.faturamento) || 0);
+  const xMean = xs.reduce((a, b) => a + b, 0) / n;
+  const yMean = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - xMean) * (ys[i] - yMean); sxx += (xs[i] - xMean) * (xs[i] - xMean); }
+  const slope = sxx !== 0 ? sxy / sxx : 0;
+  const intercept = yMean - slope * xMean;
+
+  let sce = 0, sct = 0;
+  for (let i = 0; i < n; i++) {
+    const pred = slope * xs[i] + intercept;
+    sce += (ys[i] - pred) * (ys[i] - pred);
+    sct += (ys[i] - yMean) * (ys[i] - yMean);
+  }
+  const df = Math.max(1, n - 2);
+  const rse = Math.sqrt(sce / df);
+  const r2 = sct !== 0 ? 1 - sce / sct : 0;
+  const tCrit = tCritico_(df);
+
+  const buckets = rows.map(r => r.bucket);
+  const historicoSerie = historico.map(r => Number(r.faturamento) || 0);
+  const projecaoSerie = new Array(n).fill(null);
+  const projecaoMin = new Array(n).fill(null);
+  const projecaoMax = new Array(n).fill(null);
+  const realizadoFuturo = new Array(n).fill(null);
+
+  // ultimo ponto historico repetido no inicio da projecao, so pra linha tracejada
+  // conectar visualmente sem buraco no grafico
+  projecaoSerie.push(historicoSerie[n - 1]);
+  projecaoMin.push(historicoSerie[n - 1]);
+  projecaoMax.push(historicoSerie[n - 1]);
+  historicoSerie.push(null);
+  realizadoFuturo.push(null);
+
+  futuro.forEach((r, i) => {
+    const x = cfg.nHist + i;
+    const pred = slope * x + intercept;
+    const margem = tCrit * rse * Math.sqrt(1 + 1 / n + ((x - xMean) * (x - xMean)) / sxx);
+    projecaoSerie.push(Math.max(0, pred));
+    projecaoMin.push(Math.max(0, pred - margem));
+    projecaoMax.push(pred + margem);
+    historicoSerie.push(null);
+
+    // so mostra "realizado (comparacao)" se o bucket ja tem dado real disponivel
+    // (bucket dentro do limite de dados da base); senao fica null (projecao pura)
+    const bucketDate = r.bucket; // string yyyy-mm-dd
+    realizadoFuturo.push(bucketDate <= MAX_DATA_DISPONIVEL ? Number(r.faturamento) || 0 : null);
+  });
+
+  return {
+    granularidade: gran, unidade: cfg.unit, nHist: cfg.nHist, nProj: cfg.nProj,
+    buckets, historico: historicoSerie, projecao: projecaoSerie,
+    projecaoMin, projecaoMax, realizadoFuturo,
+    slope, r2: Math.max(0, Math.min(1, r2)),
+  };
 }

@@ -37,7 +37,7 @@
 
   table.dados { width:100%; border-collapse:collapse; font-size:13px; }
   table.dados th, table.dados td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; }
-  table.dados th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; }
+  table.dados th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; position:sticky; top:0; background:var(--panel); }
 
   .loading { color:var(--muted); font-size:13px; padding:20px; text-align:center; }
   .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:var(--panel2); border:1px solid var(--border); }
@@ -108,8 +108,13 @@
       <div class="panel"><h3>Volume × PM por produto (giro vs. preço médio)</h3><div id="chart-quadrante" style="height:380px"></div></div>
       <div class="panel">
         <h3>Detalhe por produto</h3>
-        <div id="tabela-analise"><div class="loading">Carregando…</div></div>
+        <div id="tabela-analise" style="max-height:320px; overflow-y:auto;"><div class="loading">Carregando…</div></div>
       </div>
+    </div>
+    <div class="panel" style="margin-bottom:22px;">
+      <h3 id="titulo-projecao">Projeção — Faturamento</h3>
+      <div id="chart-projecao" style="height:340px"><div class="loading">Carregando…</div></div>
+      <div id="legenda-projecao" style="font-size:12px; color:var(--muted); margin-top:6px;"></div>
     </div>
   </div>
 </main>
@@ -254,6 +259,7 @@ function aplicarFiltros() {
     ULTIMA_ASSINATURA.analise = assinatura;
     document.getElementById('chart-quadrante').innerHTML = '<div class="loading">Carregando…</div>';
     document.getElementById('tabela-analise').innerHTML = '<div class="loading">Carregando…</div>';
+    document.getElementById('chart-projecao').innerHTML = '<div class="loading">Carregando…</div>';
     google.script.run.withSuccessHandler(renderAnalise)
       .withFailureHandler(err => { ULTIMA_ASSINATURA.analise = null; mostrarErro_(err); })
       .getAnaliseData(sel);
@@ -573,6 +579,64 @@ function renderAnalise(data) {
   });
   html += '</tbody></table>';
   cont.innerHTML = html;
+  desenharProjecao_(data.projecao);
+}
+
+const ROTULO_GRANULARIDADE = { dia: 'dias', semana: 'semanas', mes: 'meses', trimestre: 'trimestres' };
+
+function desenharProjecao_(proj) {
+  const cont = document.getElementById('chart-projecao');
+  const legenda = document.getElementById('legenda-projecao');
+  const tituloEl = document.getElementById('titulo-projecao');
+
+  const produtoSel = document.getElementById('f-produto');
+  const nomeProduto = produtoSel && produtoSel.value ? produtoSel.options[produtoSel.selectedIndex].text : null;
+  tituloEl.textContent = nomeProduto ? `Projeção — ${nomeProduto}` : 'Projeção — Faturamento geral';
+
+  if (!google.visualization) { setTimeout(() => desenharProjecao_(proj), 300); return; }
+  if (!proj || !proj.buckets || !proj.buckets.length) { cont.innerHTML = '<div class="loading">Sem dados suficientes pra projetar.</div>'; return; }
+
+  const dt = new google.visualization.DataTable();
+  dt.addColumn('date', 'Período');
+  dt.addColumn('number', 'Histórico');
+  dt.addColumn('number', 'Projeção');
+  dt.addColumn({ type: 'number', role: 'interval' });
+  dt.addColumn({ type: 'number', role: 'interval' });
+  dt.addColumn('number', 'Realizado (comparação)');
+
+  for (let i = 0; i < proj.buckets.length; i++) {
+    dt.addRow([
+      new Date(proj.buckets[i]),
+      proj.historico[i],
+      proj.projecao[i],
+      proj.projecaoMin[i],
+      proj.projecaoMax[i],
+      proj.realizadoFuturo[i],
+    ]);
+  }
+
+  const chart = new google.visualization.LineChart(cont);
+  chart.draw(dt, {
+    backgroundColor: 'transparent',
+    colors: ['#e0a11c', '#5aa9e6', '#2fbf71'],
+    series: {
+      0: { lineWidth: 2 },
+      1: { lineWidth: 2, lineDashStyle: [5, 4] },
+      2: { lineWidth: 2, lineDashStyle: [2, 2], pointSize: 4 },
+    },
+    intervals: { style: 'area', color: '#5aa9e6', fillOpacity: 0.15 },
+    legend: { position: 'top', textStyle: { color: '#e8eaf0' } },
+    hAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, minValue: 0 },
+    chartArea: { width: '88%', height: '70%' },
+  });
+
+  const tendenciaTxt = proj.slope >= 0 ? 'alta' : 'queda';
+  const rotulo = ROTULO_GRANULARIDADE[proj.granularidade];
+  legenda.innerHTML =
+    `Tendência linear de <b>${tendenciaTxt}</b> (R² = ${proj.r2.toFixed(2)}) calculada sobre os últimos ${proj.nHist} ${rotulo}, ` +
+    `projetando os próximos ${proj.nProj}. A área sombreada é a margem de erro (intervalo de previsão de ~95%). ` +
+    `Quando a linha verde pontilhada aparece, é o realizado do período que já existe na base — pra comparar com o que a tendência previa.`;
 }
 
 function desenharQuadrante_(pontos, medVolume, medPm) {

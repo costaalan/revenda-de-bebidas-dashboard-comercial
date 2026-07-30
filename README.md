@@ -54,6 +54,9 @@ databricks/
                            Volume/Hectolitro/Faturamento/Devoluções pra ficarem
                            coerentes com o volume realmente gerado (ver
                            "Decisões e ajustes" abaixo).
+  04_fix_nomes_titulo.py → Script local. Remove títulos (Dr./Sr./Sra./Dra.)
+                           que o Faker às vezes gera na frente de nomes de
+                           vendedor/supervisor/gerente.
 apps-script/
   Code.gs           → Backend do Web App (queries, calculo de KPI/meta/desvio).
   Index.html        → Frontend (filtros, cards, gráficos, Matriz BCG).
@@ -84,7 +87,12 @@ sazonalidade real de bebidas — pico dez/jan, queda mai-jul).
   revendas, participação por regional (rosca), e uma **Matriz BCG** de
   produtos (rentabilidade × crescimento, com ícone de lata/PET/garrafa/barril
   no lugar de bolinha genérica).
-- **Análise**: tabela + quadrante Volume × PM por produto.
+- **Análise**: tabela (com scroll) + quadrante Volume × PM por produto, e um
+  gráfico de **projeção linear** (regressão OLS) de Faturamento — geral ou de
+  um produto específico se filtrado — com banda de erro (intervalo de
+  previsão ~95%) e comparação com o realizado quando a janela projetada já
+  tem dado disponível. Se adapta à granularidade escolhida (ex: Dia usa 7
+  dias de histórico projetando os próximos 7).
 
 ## Como reproduzir
 
