@@ -620,6 +620,8 @@ function desenharProjecao_(proj) {
   });
   [1, 2, 3, 4, 5].forEach(col => formatoReais.format(dt, col));
 
+  const formatoData = { dia: 'dd/MM', semana: 'dd/MM', mes: 'MMM-yyyy', trimestre: 'MMM-yyyy' }[proj.granularidade] || 'MMM-yyyy';
+
   const chart = new google.visualization.LineChart(cont);
   chart.draw(dt, {
     backgroundColor: 'transparent',
@@ -631,9 +633,12 @@ function desenharProjecao_(proj) {
     },
     intervals: { style: 'area', color: '#5aa9e6', fillOpacity: 0.15 },
     legend: { position: 'top', textStyle: { color: '#e8eaf0' } },
-    hAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' } },
+    hAxis: {
+      textStyle: { color: '#9aa3b2', fontSize: 10 }, gridlines: { color: '#2a2f3a' },
+      format: formatoData, showTextEvery: 1, slantedText: true, slantedTextAngle: 30,
+    },
     vAxis: { textStyle: { color: '#9aa3b2' }, gridlines: { color: '#2a2f3a' }, minValue: 0, format: '"R$"#,##0' },
-    chartArea: { width: '88%', height: '70%' },
+    chartArea: { width: '88%', height: '65%' },
   });
 
   const tendenciaTxt = proj.slope >= 0 ? 'alta' : 'queda';
