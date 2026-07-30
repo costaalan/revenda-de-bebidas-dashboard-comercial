@@ -690,34 +690,40 @@ function montarProjecao_(gran, periodo, filtros) {
   const r2 = sct !== 0 ? 1 - sce / sct : 0;
   const tCrit = tCritico_(df);
 
+  // Todas as series ficam do mesmo tamanho que `buckets` (nHist+nProj), com
+  // cada indice correspondendo exatamente a uma data real — sem elementos
+  // extras. O bug anterior era usar push() pra inserir um "ponto conector",
+  // o que deslocava tudo uma posicao e criava um buraco visual entre a linha
+  // solida (historico) e a tracejada (projecao).
   const buckets = rows.map(r => r.bucket);
-  const historicoSerie = historico.map(r => Number(r.faturamento) || 0);
-  const projecaoSerie = new Array(n).fill(null);
-  const projecaoMin = new Array(n).fill(null);
-  const projecaoMax = new Array(n).fill(null);
-  const realizadoFuturo = new Array(n).fill(null);
+  const historicoSerie = new Array(buckets.length).fill(null);
+  const projecaoSerie = new Array(buckets.length).fill(null);
+  const projecaoMin = new Array(buckets.length).fill(null);
+  const projecaoMax = new Array(buckets.length).fill(null);
+  const realizadoFuturo = new Array(buckets.length).fill(null);
 
-  // ultimo ponto historico repetido no inicio da projecao, so pra linha tracejada
-  // conectar visualmente sem buraco no grafico
-  projecaoSerie.push(historicoSerie[n - 1]);
-  projecaoMin.push(historicoSerie[n - 1]);
-  projecaoMax.push(historicoSerie[n - 1]);
-  historicoSerie.push(null);
-  realizadoFuturo.push(null);
+  for (let i = 0; i < n; i++) historicoSerie[i] = Number(historico[i].faturamento) || 0;
+
+  // conector: no MESMO indice do ultimo ponto historico, a projecao recebe o
+  // mesmo valor real — assim a linha tracejada nasce exatamente onde a solida
+  // termina, sem buraco e sem indice fantasma.
+  projecaoSerie[n - 1] = historicoSerie[n - 1];
+  projecaoMin[n - 1] = historicoSerie[n - 1];
+  projecaoMax[n - 1] = historicoSerie[n - 1];
 
   futuro.forEach((r, i) => {
+    const idx = n + i;
     const x = cfg.nHist + i;
     const pred = slope * x + intercept;
     const margem = tCrit * rse * Math.sqrt(1 + 1 / n + ((x - xMean) * (x - xMean)) / sxx);
-    projecaoSerie.push(Math.max(0, pred));
-    projecaoMin.push(Math.max(0, pred - margem));
-    projecaoMax.push(pred + margem);
-    historicoSerie.push(null);
+    projecaoSerie[idx] = Math.max(0, pred);
+    projecaoMin[idx] = Math.max(0, pred - margem);
+    projecaoMax[idx] = pred + margem;
 
     // so mostra "realizado (comparacao)" se o bucket ja tem dado real disponivel
     // (bucket dentro do limite de dados da base); senao fica null (projecao pura)
     const bucketDate = r.bucket; // string yyyy-mm-dd
-    realizadoFuturo.push(bucketDate <= MAX_DATA_DISPONIVEL ? Number(r.faturamento) || 0 : null);
+    realizadoFuturo[idx] = bucketDate <= MAX_DATA_DISPONIVEL ? Number(r.faturamento) || 0 : null;
   });
 
   return {
