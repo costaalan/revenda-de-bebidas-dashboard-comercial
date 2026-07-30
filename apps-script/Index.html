@@ -149,10 +149,7 @@ function mostrarPagina(p) {
   document.getElementById('nav-overview').classList.toggle('active', p === 'overview');
   document.getElementById('nav-analise').classList.toggle('active', p === 'analise');
   document.getElementById('campo-produto').style.display = p === 'analise' ? 'flex' : 'none';
-  const assinaturaAtual = JSON.stringify(coletarSelecao());
-  if (ULTIMA_ASSINATURA[p] !== assinaturaAtual) {
-    aplicarFiltros();
-  }
+  aplicarFiltros(); // sempre redesenha; internamente reusa os dados se o filtro nao mudou
 }
 
 function atualizarCamposPeriodo() {
@@ -235,16 +232,24 @@ function coletarSelecao() {
   };
 }
 
-// Assinatura (JSON dos filtros) usada na ultima carga bem-sucedida de cada
-// pagina. Trocar de aba sem mudar filtro so reexibe o que ja esta no DOM
-// (as paginas nunca sao destruidas, so escondidas via CSS) em vez de
-// consultar o Databricks de novo.
+// Assinatura (JSON dos filtros) + dados da ultima carga bem-sucedida de cada
+// pagina. Trocar de aba sem mudar filtro reusa os DADOS (evita nova consulta
+// ao Databricks) mas sempre REDESENHA os graficos — Google Charts (SVG) fica
+// com tamanho errado pra sempre se for desenhado, ou ficar, com o container
+// escondido/nao estabilizado, entao pular soh o redesenho (nao soh a busca)
+// deixava os graficos "encolhidos" ao voltar pra uma aba.
 const ULTIMA_ASSINATURA = { overview: null, analise: null };
+const ULTIMOS_DADOS = { overview: null, analise: null };
 
 function aplicarFiltros() {
   const sel = coletarSelecao();
   const assinatura = JSON.stringify(sel);
+
   if (PAGINA_ATUAL === 'overview') {
+    if (ULTIMA_ASSINATURA.overview === assinatura && ULTIMOS_DADOS.overview) {
+      renderOverview(ULTIMOS_DADOS.overview);
+      return;
+    }
     ULTIMA_ASSINATURA.overview = assinatura;
     document.getElementById('overview-cards').innerHTML = '<div class="loading">Carregando KPIs…</div>';
     document.getElementById('chart-evolutivo').innerHTML = '<div class="loading">Carregando…</div>';
@@ -252,15 +257,19 @@ function aplicarFiltros() {
     document.getElementById('chart-bcg').innerHTML = '<div class="loading">Carregando…</div>';
     document.getElementById('chart-ranking-revendas').innerHTML = '<div class="loading">Carregando…</div>';
     document.getElementById('chart-regional-donut').innerHTML = '<div class="loading">Carregando…</div>';
-    google.script.run.withSuccessHandler(renderOverview)
+    google.script.run.withSuccessHandler(data => { ULTIMOS_DADOS.overview = data; renderOverview(data); })
       .withFailureHandler(err => { ULTIMA_ASSINATURA.overview = null; mostrarErro_(err); })
       .getOverviewData(sel);
   } else {
+    if (ULTIMA_ASSINATURA.analise === assinatura && ULTIMOS_DADOS.analise) {
+      renderAnalise(ULTIMOS_DADOS.analise);
+      return;
+    }
     ULTIMA_ASSINATURA.analise = assinatura;
     document.getElementById('chart-quadrante').innerHTML = '<div class="loading">Carregando…</div>';
     document.getElementById('tabela-analise').innerHTML = '<div class="loading">Carregando…</div>';
     document.getElementById('chart-projecao').innerHTML = '<div class="loading">Carregando…</div>';
-    google.script.run.withSuccessHandler(renderAnalise)
+    google.script.run.withSuccessHandler(data => { ULTIMOS_DADOS.analise = data; renderAnalise(data); })
       .withFailureHandler(err => { ULTIMA_ASSINATURA.analise = null; mostrarErro_(err); })
       .getAnaliseData(sel);
   }
